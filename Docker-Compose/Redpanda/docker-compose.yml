@@ -1,0 +1,72 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    command:
+      [
+        "redpanda", "start",
+        "--node-id=0",
+        "--kafka-addr=PLAINTEXT://0.0.0.0:9092",
+        "--advertise-kafka-addr=PLAINTEXT://redpanda:9092",
+        "--pandaproxy-addr=0.0.0.0:8082",
+        "--advertise-pandaproxy-addr=redpanda:8082",
+        "--schema-registry-addr=0.0.0.0:8081",
+        "--rpc-addr=0.0.0.0:33145",
+        "--advertise-rpc-addr=redpanda:33145",
+        "--smp=1",
+        "--memory=2G",
+        "--mode=dev-container",
+        "--default-log-level=info",
+        "--overprovisioned"
+      ]
+    ports:
+      - "11837:9092"   # Kafka API
+      - "11838:9644"   # Admin API
+      - "11839:8081"   # Schema Registry
+      - "11840:8082"   # REST Proxy (Pandaproxy)
+      - "11841:33145"  # RPC (inter-node comms)
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    environment:
+      REDPANDA_CLUSTER_ID: backend-cluster
+      REDPANDA_NODE_ID: 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9644/v1/status/ready || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 60s
+    restart: unless-stopped
+
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "11842:8080"   # Console Web UI
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+      KAFKA_CLIENTID: "redpanda-console"
+      KAFKA_SECURITY_PROTOCOL: "PLAINTEXT"
+      
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda:8081"
+      
+      REDPANDA_ADMINAPI_ENABLED: "true"
+      REDPANDA_ADMINAPI_URLS: "http://redpanda:9644"
+      
+      SERVER_LISTENPORT: 8080
+      SERVER_HTTPSLISTENPORT: -1
+      
+      LOGIN_ENABLED: "false"
+      LOGIN_JWTSECRET: ""
+      
+      CONNECT_ENABLED: "false"
+      
+      LOGGING_LEVEL: info
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redpanda-data:
+    driver: local
